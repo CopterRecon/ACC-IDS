@@ -19,9 +19,11 @@ print("Measured speeds:", measured_speed)
 
 # --- Kalman filter loop ---
 estimates = []
+print("0- Q:", Q, "R:", R, "P:", P, "A:",A)
 
 for z in measured_speed:
 
+    print("0- Q:", Q, "R:", R, "P:", P, "A:",A, "z:", z)
     # Prediction
     x = A @ x
     P = A @ P @ A.T + Q
@@ -31,7 +33,9 @@ for z in measured_speed:
     x = x + K @ (z - H @ x)
     P = (np.eye(1) - K @ H) @ P
 
+    print("0- Q:", Q, "R:", R, "P:", P, "K:", K, "A:",A, "z:", z)
     estimates.append(x[0, 0])
 
 # Print results
 print("Estimated v_h values:", estimates)
+print("Q:", Q, "R:", R, "P:", P, "K:", K)
