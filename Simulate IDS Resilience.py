@@ -16,7 +16,7 @@ class KF:
         self.P = (1-K)*self.P
         return self.x
     
-def simulate_vehicle_speed(mass, current_speed, throttle_input, braking_input, delta_time):
+def simulate_vehicle_speed(vehicle,mass, current_speed, throttle_input, braking_input, delta_time):
     # Constants and vehicle parameters (simplified)
     C_drag = 0.3  # Drag coefficient
     A_frontal = 2.0  # Frontal area (m^2)
@@ -46,12 +46,12 @@ def simulate_vehicle_speed(mass, current_speed, throttle_input, braking_input, d
 
 
     if (braking_input > 0):
-        print(f"Breaking requested: current_speed:{current_speed}, braking_input:{braking_input}")
         acceleration = -a
-        
-    # Update Speed (using simple Euler integration)
-    # New velocity = Old velocity + acceleration * time step
-    new_speed = current_speed + acceleration * delta_time
+        #print(f"Breaking for {vehicle} requested: current_speed:{current_speed}, braking_input:{braking_input} new_speed {new_speed} current_speed {current_speed}, acceleration {acceleration}")
+
+        # Update Speed (using simple Euler integration)
+        # New velocity = Old velocity + acceleration * time step
+    new_speed = current_speed + (acceleration * delta_time)
 
     # Speed cannot be negative
     if new_speed < 0:
@@ -67,9 +67,13 @@ def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faul
         braking = 1
     else:    
         braking = round(random.betavariate(0.4,1))
-        throttle = random.random()*6
+        throttle = random.random()*4
     
-    current_speed, acc = simulate_vehicle_speed(1200, current_speed, throttle, braking, time_step)
+    # The maximum throttle is 1
+    if (throttle > 1.0):
+        throttle = 1.0
+        
+    current_speed, acc = simulate_vehicle_speed(vehicle,1200, current_speed, throttle, braking, time_step)
     
 #        if (tcurrent_speed <= 90):
 #            current_speed, acc = tcurrent_speed, tacc
@@ -172,6 +176,7 @@ safe_Distance = get_safe_distance(Hostcurrent_speed)
 gap_distance=1.1 * safe_Distance
 
 ntimes =0
+rtimes =0
 
 for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
     faultinjection = 0
@@ -200,14 +205,16 @@ for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
         
     if (Hostcurrent_speed > threshold_speed):
         speedRisk = 1
+        rtimes= rtimes+1
     else:
         speedRisk = 0
     
     SimulationData.append([Hostcurrent_speed,Leadcurrent_speed,threshold_speed,safe_Distance,gap_distance,braking,Crash,speedRisk])    
     
-    #print(f"{j} - Hostcurrent_speed:{Hostcurrent_speed:.2f}, Leadcurrent_speed {Leadcurrent_speed:.2f}, threshold_speed:{threshold_speed:.2f}, safe distance {safe_Distance:.2f}, gap_distance:{gap_distance:.2f}, Distance risk:{braking}, speedRisk:{speedRisk}")
+    #print(f"{j} - Hostcurrent_speed:{Hostcurrent_speed:.2f}, Leadcurrent_speed {Leadcurrent_speed:.2f}, threshold_speed:{threshold_speed:.2f}, safe distance {safe_Distance:.2f}, gap_distance:{gap_distance:.2f}, Distance risk:{Crash}, speedRisk:{speedRisk}")
     
 print(f"Safe distance is violated {ntimes} times")
+print(f"Threshold speed is violated {rtimes} times")
 
 for item in SimulationData:
     print(f"Record: {item}")
