@@ -63,7 +63,7 @@ def simulate_vehicle_speed(vehicle,mass, current_speed, throttle_input, braking_
 ##  Simulate the speed of the vehicle
 ##
 def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faultinjection):
-    if (current_speed >= 90):
+    if (current_speed >= 110):
         braking = 1
     else:    
         braking = round(random.betavariate(0.4,1))
@@ -85,14 +85,14 @@ def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faul
 
 # Compute teh safe distance
 
-def get_safe_distance(current_speed):
+def get_safe_distance(vspeed):
     
-    distance = (Speed_conversion * h * current_speed) + ((0.039 * math.sqrt(current_speed))/a)
+    distance = (Speed_conversion * h * vspeed) + ((0.039 * math.sqrt(vspeed))/a)
     return distance
 
 # Compute GAP distance between the two vehicle
 def get_Gapdistance(previous_distance, host_speed, lead_speed):
-    distance = previous_distance + ((lead_speed - host_speed) * time_step)
+    distance = previous_distance + ((lead_speed - host_speed) * Speed_conversion * time_step)
     return distance
 
 # -------------------------------
@@ -111,20 +111,12 @@ def compute_v_thr(d, v_l, u, h, dt):
     b = Speed_conversion * h + dt
     inside = (b**2) + ((0.156 / u) * (d + (v_l * dt)))
     if (inside < 0):
-        inside (f"inside {inside:.2f} d_hat_k {d:.2f}, dt {dt:.2f}, v_l:{v_l:.2f}, h:{h}, a:{a}")
-    #    v_thr = 0
+        print (f"inside {inside:.2f} d {d:.2f}, dt {dt:.2f}, v_l:{v_l:.2f}, h:{h}, a:{a}")
+        v_thr = 0
     else:  
         v_thr = (u / 0.078) * (-b + np.sqrt(inside))
     
     return v_thr
-
-def v_threshold(d, dt, v_l, h, a):
-    term1 = 0.278 * h + dt
-    term2 = term1**2 + (0.156 / a) * (d + v_l * dt)
-    if (term2 < 0):
-        print (f"term 2 {term2:.2f} d {d:.2f}, dt {dt:.2f}, v_l:{v_l:.2f}, h:{h}, a:{a}")
-        
-    return (a / 0.078) * (-term1 + np.sqrt(term2))
 
 # -------------------------------
 # Lemma 4.2 Equation (Eq. )
@@ -157,10 +149,10 @@ def compute_z_threshold(v_h_pred_k1, K_k1, d_hat_k, v_l_hat_k, u, h, dt):
 
 
     # Example Usage:
-# mass_of_car = 1200 kg, initial_speed = 0 m/s, time_step = 0.01 seconds
-Hostcurrent_speed = 20.0
-Leadcurrent_speed = 30.0
-time_step = 0.01
+# mass_of_car = 1200 kg, , time_step = 0.01 seconds
+Hostcurrent_speed = 38.0 
+Leadcurrent_speed = 30.0 
+time_step = 0.01   # in hours unit 60 min/100 
 throttle = 1.0 # Full throttle
 braking = 0.0
 h=2.0 #
@@ -177,7 +169,9 @@ gap_distance=1.1 * safe_Distance
 
 ntimes =0
 rtimes =0
+nexceed=0
 
+print ("We start with ")
 for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
     faultinjection = 0
 
@@ -188,20 +182,24 @@ for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
     
     Leadcurrent_speed, lbrake = get_vehicle_speed("Lead",Leadcurrent_speed, throttle, 0, time_step, faultinjection)
 
+    # threshold_speed uses the perevious gap distance
+    #d, v_l, u, h, dt)
+    threshold_speed = compute_v_thr(gap_distance,Leadcurrent_speed,a, h, time_step)
+
     safe_Distance = get_safe_distance(Hostcurrent_speed)    
     gap_distance = get_Gapdistance(gap_distance, Hostcurrent_speed, Leadcurrent_speed) 
 
     #threshold_speed = compute_v_thr(gap_distance, Leadcurrent_speed, a, h, time_step)
 
-    threshold_speed = v_threshold(gap_distance,time_step, Leadcurrent_speed,h,a)
+
 
     ## Decide on the next speed
     if (gap_distance < safe_Distance):
-        Crash = 1
+        PotentialCrash = 1
         ntimes= ntimes+1
         
     else:
-        Crash = 0
+        PotentialCrash = 0
         
     if (Hostcurrent_speed > threshold_speed):
         speedRisk = 1
@@ -209,12 +207,25 @@ for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
     else:
         speedRisk = 0
     
-    SimulationData.append([Hostcurrent_speed,Leadcurrent_speed,threshold_speed,safe_Distance,gap_distance,braking,Crash,speedRisk])    
+    # Gap between safe and gap distances
+    gap = gap_distance - safe_Distance
+    if (gap > 3.0):
+        exceedthreshold = 1
+        nexceed = nexceed + 1
+    else:     
+        exceedthreshold = 0
+    
+    SimulationData.append([Hostcurrent_speed,Leadcurrent_speed,threshold_speed,safe_Distance,gap_distance,braking,PotentialCrash,speedRisk, exceedthreshold])    
     
     #print(f"{j} - Hostcurrent_speed:{Hostcurrent_speed:.2f}, Leadcurrent_speed {Leadcurrent_speed:.2f}, threshold_speed:{threshold_speed:.2f}, safe distance {safe_Distance:.2f}, gap_distance:{gap_distance:.2f}, Distance risk:{Crash}, speedRisk:{speedRisk}")
+    if (gap_distance < 2):
+        print("Gap Distance less than 2....> Exit")
+        break
     
 print(f"Safe distance is violated {ntimes} times")
 print(f"Threshold speed is violated {rtimes} times")
+print(f"nexceed is violated {nexceed} times")
+
 
 for item in SimulationData:
     print(f"Record: {item}")
