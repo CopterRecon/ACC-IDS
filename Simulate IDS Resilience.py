@@ -62,8 +62,8 @@ def simulate_vehicle_speed(vehicle,mass, current_speed, throttle_input, braking_
 
 ##  Simulate the speed of the vehicle
 ##
-def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faultinjection):
-    if (current_speed >= 110):
+def get_vehicle_speed(vehicle, vspeed, throttle, braking, time_step, faultinjection):
+    if (vspeed >= 110):
         braking = 1
     else:    
         braking = round(random.betavariate(0.4,1))
@@ -73,7 +73,7 @@ def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faul
     if (throttle > 1.0):
         throttle = 1.0
         
-    current_speed, acc = simulate_vehicle_speed(vehicle,1200, current_speed, throttle, braking, time_step)
+    current_speed, acc = simulate_vehicle_speed(vehicle,1200, vspeed, throttle, braking, time_step)
     
 #        if (tcurrent_speed <= 90):
 #            current_speed, acc = tcurrent_speed, tacc
@@ -87,7 +87,7 @@ def get_vehicle_speed(vehicle, current_speed, throttle, braking, time_step, faul
 
 def get_safe_distance(vspeed):
     
-    distance = (Speed_conversion * h * vspeed) + ((0.039 * math.sqrt(vspeed))/a)
+    distance = (Speed_conversion * h * vspeed) + ((0.039 * (vspeed**2))/a)
     return distance
 
 # Compute GAP distance between the two vehicle
@@ -108,14 +108,18 @@ def compute_v_thr(d, v_l, u, h, dt):
     - h           : headway time
     - dt          : sampling time Δt
     """
-    b = Speed_conversion * h + dt
-    inside = (b**2) + ((0.156 / u) * (d + (v_l * dt)))
-    if (inside < 0):
-        print (f"inside {inside:.2f} d {d:.2f}, dt {dt:.2f}, v_l:{v_l:.2f}, h:{h}, a:{a}")
-        v_thr = 0
-    else:  
-        v_thr = (u / 0.078) * (-b + np.sqrt(inside))
-    
+
+    # Coefficients from Eq. (17): g(v) = p v^2 + b v + c
+    p = 0.039 / a
+    b = 0.278 * (h + dt)
+    c = -(d + 0.278 * dt * v_l)
+
+    disc = b**2 - 4 * p * c  # should be >= 0 for physical d >= 0
+    disc = np.maximum(disc, 0.0)
+
+    # Positive root (threshold)
+    v_thr= (-b + np.sqrt(disc)) / (2 * p)
+
     return v_thr
 
 # -------------------------------
@@ -148,11 +152,81 @@ def compute_z_threshold(v_h_pred_k1, K_k1, d_hat_k, v_l_hat_k, u, h, dt):
     return z_thr_k1
 
 
+'''
+     Plot the host speed threshold
+
+'''
+def plotSpeedThreshold():
+
+    # Choose one lead speed, or multiple for comparison
+    lead_speeds = [20, 70, 110]  # km/h
+    
+    # Plot v_thr as a function of gap d(t)
+    d_min, d_max = 0, 80
+    d_vals = np.linspace(d_min, d_max, 500)
+    
+    plt.figure()
+    for v_l in lead_speeds:
+        thr_vals = compute_v_thr(d_vals, v_l=v_l, u=a, h=h, dt=time_step)
+        plt.plot(d_vals, thr_vals, label=f"Speed lead vehicle = {v_l} km/h")
+    
+    plt.xlabel("Current distance between the host and lead vehicles - d(t)  (m)")
+    plt.ylabel("Threshold host speed  (km/h)")
+    #plt.title("")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    return
+
+'''
+    This is the code for Equation 17
+'''
+def g(v_kmh: np.ndarray, v_l, gapDistance, dt) -> np.ndarray:
+
+    # Eq. (17) coefficients
+    p = 0.039 / a
+    b = 0.278 * (h + dt)
+    c = -(gapDistance + 0.278 * dt * v_l)
+    
+    return p * v_kmh**2 + b * v_kmh + c
+
+'''
+
+'''
+def plotDistanceGapVSSpeedthreshold(v_l, gapDistance,dt ):
+
+    # Eq. (17) coefficients
+    p = 0.039 / a
+    b = 0.278 * (h + dt)
+    c = -(gapDistance + 0.278 * dt * v_l)
+    # Compute positive root (threshold) of g(v)=0
+    disc = b**2 - 4 * p * c
+    if disc < 0:
+        raise ValueError(f"Discriminant is negative ({disc}). Check parameters.")
+    
+    v_thr = (-b + np.sqrt(disc)) / (2 * p)
+
+    # Plot over a host-speed range
+    v = np.linspace(0, 120, 800)  # km/h (adjust as desired)
+
+    plt.figure()
+    plt.plot(v, g(v, v_l,gapDistance,dt), label="g(v) (Eq. 17)")
+    plt.axhline(0)
+    plt.axvline(v_thr, linestyle="--", label=f"v_thr ≈ {v_thr:.2f} km/h")
+    plt.xlabel("Threshold host speed  (km/h)")
+    plt.ylabel("Gap btw. current distance and safe distance - g(v)")
+    #plt.title("Gap distance plotted as a quadratic in host speed")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+
+    return
     # Example Usage:
 # mass_of_car = 1200 kg, , time_step = 0.01 seconds
 Hostcurrent_speed = 38.0 
 Leadcurrent_speed = 30.0 
-time_step = 0.01   # in hours unit 60 min/100 
+time_step = 1   # in s
 throttle = 1.0 # Full throttle
 braking = 0.0
 h=2.0 #
@@ -163,9 +237,24 @@ SimulationData=[]
 
 kf = KF(Hostcurrent_speed, 10, 0.01, 0.1)
 
+
+# Example: compute v_thr at a specific d and v_l
+example_d = 41.46068235294118
+example_vl = 30
+print("v_thr =", compute_v_thr(example_d, example_vl, u=a,h=h, dt=time_step), "km/h")
+
+plotSpeedThreshold()
+
+
+plotDistanceGapVSSpeedthreshold(v_l = 30, gapDistance = 41 , dt = time_step)
+
+
 #Set the initial distance between the two vehicle to be the safe distance
 safe_Distance = get_safe_distance(Hostcurrent_speed)  
 gap_distance=1.1 * safe_Distance
+
+print(f" Initial safe distance {safe_Distance} for speed {Hostcurrent_speed} Gap {gap_distance}")
+
 
 ntimes =0
 rtimes =0
@@ -209,7 +298,7 @@ for j in range(1000): # Run for 10 seconds (1000 steps of 0.01s)
     
     # Gap between safe and gap distances
     gap = gap_distance - safe_Distance
-    if (gap > 3.0):
+    if (gap > 1.0):
         exceedthreshold = 1
         nexceed = nexceed + 1
     else:     
