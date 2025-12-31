@@ -1,4 +1,10 @@
-# acc_sim/simulator.py
+
+# Filename: acc_sim/simulator.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-29
+# Description: Implements the simulator 
+# License: -
+
 import random
 import numpy as np
 
@@ -8,6 +14,8 @@ from .vehicle import VehicleModel
 from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold
 from .controllers import LeadCruiseController, HostACCController
 from .filters import KalmanFilter
+from .attacks import SpeedFaultInjector, SpeedAttackConfig
+
 
 @dataclass
 class SimConfig:
@@ -35,6 +43,16 @@ class TwoCarSimulator:
         self.gap_m = float(init_gap_m)
         self.kf_host = kf_host
         self.records = []
+
+        self.attack_cfg =SpeedAttackConfig(
+            enabled=True,
+            mode="ramp_bias",
+            start_step=200,
+            ramp_kmh_per_s=0.3,
+            max_ramp_bias_kmh=20.0
+        )
+        self.speed_attacker = SpeedFaultInjector(self.attack_cfg, dt=self.cfg.dt)
+        
 
     def run(self) -> pd.DataFrame:
         ntimes = 0
@@ -82,18 +100,29 @@ class TwoCarSimulator:
             self.kf_host.predict()
             v_pred_k1 = self.kf_host.x
             P_pred_k1 = self.kf_host.P
+            
+            
+            #  This code simululates random faults processed by kalman filter 
             # --- Measurement (noisy) and KF update ---
             z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
-            v_filt = self.kf_host.update(z_meas)
-            
+            v_filtFault = self.kf_host.update(z_meas)
             
             # --- Lemma 4.2: measurement threshold ---
             z_thr, K_k1 = lemma42_z_threshold(
-                v_pred_k1=v_pred_k1,
+                v_pred_k1=v_filtFault,
                 P_pred_k1=P_pred_k1,
                 R=self.kf_host.R,
                 v_thr=v_thr_now,
             )
+            
+            #Simulate attack
+            z_clean = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))  # sensor noise
+            z_attack, attack_active, inj_delta = self.speed_attacker.apply(z_clean, k)
+            # The injected data is fed to the kalman filter
+            v_filtAttack = self.kf_host.update(z_attack)
+            
+            
+            
 
             self.records.append({
                 "step": k,
@@ -114,10 +143,16 @@ class TwoCarSimulator:
                 "a_host_mps2": aH,
                 "a_lead_mps2": aL,
                 "z_meas_kmh": z_meas,
-                "v_filt_kmh": v_filt,
+                "v_filtFault_kmh": v_filtFault,
                 "K_k1": K_k1,
                 "v_pred_kmh": v_pred_k1,
-                "P_pred": P_pred_k1
+                "P_pred": P_pred_k1,
+                "z_meas_kmh": z_clean,
+                "z_attack_kmh": z_attack,
+                "v_filtAttack_kmh": v_filtAttack,
+                "attack_active": attack_active,
+                "inj_delta_kmh": inj_delta,
+                "meas_exceeds_z_thr": int(z_attack > z_thr),
             })
 
             if self.gap_m < self.cfg.stop_gap_m:

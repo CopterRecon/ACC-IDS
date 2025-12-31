@@ -1,4 +1,9 @@
-# acc_sim/constants.py
+
+# Filename: acc_sim/constants.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-30
+# Description: Provides a set of constantes
+# License: -
 
 KMH_TO_MS = 1000.0 / 3600.0
 MS_TO_KMH = 3600.0 / 1000.0

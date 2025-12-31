@@ -1,4 +1,9 @@
-# acc_sim/controllers.py
+
+# Filename: acc_sim/controllers.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-29
+# Description: Models vehicle controllers
+# License: -
 
 import numpy as np
 from dataclasses import dataclass

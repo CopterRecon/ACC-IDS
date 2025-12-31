@@ -1,4 +1,9 @@
-# acc_sim/vehicle.py
+
+# Filename: acc_sim/vehicle.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-28
+# Description: Models vehcile behavior
+# License: -
 
 from dataclasses import dataclass
 from .constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0

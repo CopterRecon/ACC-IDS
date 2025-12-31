@@ -1,4 +1,9 @@
-# acc_sim/plots.py
+
+# Filename: acc_sim/plots.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-29
+# Description: Implements the functions for plotting the vehicles speed metrics and distances 
+# License: -
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -56,7 +61,20 @@ def plot_Measuredhost_vs_threshold(df):
     plt.plot(df["step"], df["v_host_kmh"], marker ="+", markevery=20, label="Host speed v_h (km/h)")
     plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
     plt.plot(df["step"], df["z_thr"], label="Measured speed z_thr (km/h)")
-    plt.plot(df["step"], df["v_filt_kmh"], label="Host speed with KF v_h+(km/h)")
+    plt.plot(df["step"], df["v_filtFault_kmh"], label="Host speed with KF v_h+(km/h)")
+    plt.plot(df["step"], df["v_lead_kmh"], label="Lead speed v_l(km/h)")
+    plt.xlabel("Time step")
+    plt.ylabel("Speed (km/h)")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+    
+def plot_Attackhost_vs_threshold(df):
+    plt.figure()
+    plt.plot(df["step"], df["v_host_kmh"], marker ="+", markevery=20, label="Host speed v_h (km/h)")
+    plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
+    plt.plot(df["step"], df["v_filtAttack_kmh"], label="Filtered speed ")
+    plt.plot(df["step"], df["z_attack_kmh"], label="Measured speed with attacks (km/h)")
     plt.plot(df["step"], df["v_lead_kmh"], label="Lead speed v_l(km/h)")
     plt.xlabel("Time step")
     plt.ylabel("Speed (km/h)")

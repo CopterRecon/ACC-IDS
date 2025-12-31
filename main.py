@@ -1,3 +1,9 @@
+# Filename: acc_sim/main.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+# Created: 2025-12-29
+# Description: Implements the functions for plotting the vehicles speed metrics and distances 
+# License: -
+
 import random
 import numpy as np
 
@@ -5,7 +11,7 @@ from acc_sim.vehicle import VehicleParams, VehicleState, VehicleModel
 from acc_sim.controllers import LeadCruiseController, LeadControllerParams, HostACCController, HostControllerParams
 from acc_sim.safety import safe_distance_simple
 from acc_sim.simulator import TwoCarSimulator, SimConfig
-from acc_sim.plots import plot_gap_vs_required, plot_host_vs_threshold, plot_speeds, plot_speed_threshold, plot_distance_gap_vs_speed_threshold, plot_Measuredhost_vs_threshold
+from acc_sim.plots import plot_gap_vs_required, plot_host_vs_threshold, plot_speeds, plot_speed_threshold, plot_distance_gap_vs_speed_threshold, plot_Measuredhost_vs_threshold,plot_Attackhost_vs_threshold
 from acc_sim.filters import KalmanFilter
 from acc_sim.constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0
 
@@ -51,6 +57,9 @@ def main():
     #plot_distance_gap_vs_speed_threshold(v_lead_kmh=30.0,gap_m=41.0,u=host_params.u_brake,h=cfg.h,dt=cfg.dt,v_max_kmh=140)
     
     plot_Measuredhost_vs_threshold(df)
+    
+    # Plots speed attacks and relation to other data
+    plot_Attackhost_vs_threshold(df)
     # Optional: save
     # df.to_csv("simulation.csv", index=False)
 

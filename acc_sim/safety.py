@@ -1,4 +1,10 @@
-# acc_sim/safety.py
+
+# Filename: acc_sim/safety.py
+# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
+#          + Prudhvi
+# Created: 2025-12-28
+# Description: Impelments a set of function for ACC safety
+# License: -
 
 import numpy as np
 from .constants import KMH_TO_MS
