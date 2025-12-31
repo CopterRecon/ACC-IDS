@@ -5,8 +5,9 @@ import numpy as np
 from dataclasses import dataclass
 import pandas as pd
 from .vehicle import VehicleModel
-from .safety import gap_update, required_gap_eq17, compute_v_thr
+from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold
 from .controllers import LeadCruiseController, HostACCController
+from .filters import KalmanFilter
 
 @dataclass
 class SimConfig:
@@ -23,7 +24,8 @@ class TwoCarSimulator:
         host_ctrl: HostACCController,
         lead_ctrl: LeadCruiseController,
         cfg: SimConfig,
-        init_gap_m: float
+        init_gap_m: float,
+        kf_host: KalmanFilter
     ):
         self.host = host
         self.lead = lead
@@ -31,6 +33,7 @@ class TwoCarSimulator:
         self.lead_ctrl = lead_ctrl
         self.cfg = cfg
         self.gap_m = float(init_gap_m)
+        self.kf_host = kf_host
         self.records = []
 
     def run(self) -> pd.DataFrame:
@@ -56,7 +59,7 @@ class TwoCarSimulator:
             )
             
             vH, aH = self.host.step(host_th, host_br, self.cfg.dt)
-
+            
             # Update gap (m)
             self.gap_m = gap_update(self.gap_m, vH, vL, self.cfg.dt)
 
@@ -69,6 +72,28 @@ class TwoCarSimulator:
             speed_risk = int(vH > v_thr_now)
             ntimes += potential_crash
             rtimes += speed_risk
+            
+            #Add the Z
+            # Suppose kf_host tracks host speed in km/h
+            
+            print (f"kf_host.P: {self.kf_host.P}")
+            
+            # --- KF predict ---
+            self.kf_host.predict()
+            v_pred_k1 = self.kf_host.x
+            P_pred_k1 = self.kf_host.P
+            # --- Measurement (noisy) and KF update ---
+            z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
+            v_filt = self.kf_host.update(z_meas)
+            
+            
+            # --- Lemma 4.2: measurement threshold ---
+            z_thr, K_k1 = lemma42_z_threshold(
+                v_pred_k1=v_pred_k1,
+                P_pred_k1=P_pred_k1,
+                R=self.kf_host.R,
+                v_thr=v_thr_now,
+            )
 
             self.records.append({
                 "step": k,
@@ -78,6 +103,7 @@ class TwoCarSimulator:
                 "d_req_m": d_req,
                 "v_thr_kmh": v_thr_now,
                 "v_target_kmh": v_tgt,
+                "z_thr":z_thr,
                 "host_throttle": host_th,
                 "host_brake": host_br,
                 "lead_brake_event": int(lead_event),
@@ -87,6 +113,11 @@ class TwoCarSimulator:
                 "speed_risk": speed_risk,
                 "a_host_mps2": aH,
                 "a_lead_mps2": aL,
+                "z_meas_kmh": z_meas,
+                "v_filt_kmh": v_filt,
+                "K_k1": K_k1,
+                "v_pred_kmh": v_pred_k1,
+                "P_pred": P_pred_k1
             })
 
             if self.gap_m < self.cfg.stop_gap_m:

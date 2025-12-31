@@ -51,6 +51,19 @@ def plot_host_vs_threshold(df):
     plt.legend()
     plt.show()
 
+def plot_Measuredhost_vs_threshold(df):
+    plt.figure()
+    plt.plot(df["step"], df["v_host_kmh"], marker ="+", markevery=20, label="Host speed v_h (km/h)")
+    plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
+    plt.plot(df["step"], df["z_thr"], label="Measured speed z_thr (km/h)")
+    plt.plot(df["step"], df["v_filt_kmh"], label="Host speed with KF v_h+(km/h)")
+    plt.plot(df["step"], df["v_lead_kmh"], label="Lead speed v_l(km/h)")
+    plt.xlabel("Time step")
+    plt.ylabel("Speed (km/h)")
+    plt.grid(True)
+    plt.legend()
+    plt.show()
+    
 def plot_speeds(df):
     plt.figure()
     plt.plot(df["step"], df["v_host_kmh"], label="Host (km/h)")

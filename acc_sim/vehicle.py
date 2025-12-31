@@ -1,7 +1,7 @@
 # acc_sim/vehicle.py
 
 from dataclasses import dataclass
-from .constants import KMH_TO_MS, MS_TO_KMH, G
+from .constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0
 
 @dataclass
 class VehicleParams:
