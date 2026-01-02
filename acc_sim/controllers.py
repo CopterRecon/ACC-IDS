@@ -8,7 +8,7 @@
 import numpy as np
 from dataclasses import dataclass
 from .constants import KMH_TO_MS
-from .safety import compute_v_thr, required_gap_eq17
+from .safety import compute_v_thr, required_gap_eq17, safe_distance_simple
 
 @dataclass
 class LeadControllerParams:
@@ -109,37 +109,59 @@ class LeadCruiseController:
             
         return float(np.clip(throttle, 0, 1)), float(np.clip(brake, 0, 1)), False
 
+
 @dataclass
 class HostControllerParams:
-    cruise_kmh: float = 120.0
+    cruise_kmh: float = 100.0
     a_comfort: float = 1.5
-    k_acc: float = 0.15
     u: float = 3.4
     hard_brake: float = 0.8
-
+    
+    # PID gains (tune these)
+    kp: float = 0.20
+    ki: float = 0.02
+    kd: float = 0.10
+    
+    
 class HostACCController:
     def __init__(self, p: HostControllerParams):
         self.p = p
-
+        self._e_int = 0.0
+        self._e_prev = 0.0
+        
+    def reset(self):
+        self._e_int = 0.0
+        self._e_prev = 0.0
+        
     def act(self, v_host_kmh: float, v_lead_kmh: float, gap_m: float, h: float, dt: float):
-        v_thr = compute_v_thr(gap_m, v_lead_kmh, u=self.p.u, h=h, dt=dt)
-        v_target = min(self.p.cruise_kmh, v_lead_kmh, v_thr)
-
-        err = v_target - v_host_kmh
-        a_des = self.p.k_acc * err * KMH_TO_MS
-        a_des = max(-self.p.u, min(self.p.a_comfort, a_des))
-
+        # Desired spacing
+        d_safe = safe_distance_simple(v_host_kmh, h, self.p.u)
+        
+        # --- PID on spacing error ---
+        e = gap_m - d_safe                          # [m]
+        de = (e - self._e_prev) / max(dt, 1e-6)     # [m/s]
+        
+        # Provisional integral update
+        e_int_candidate = self._e_int + e * dt
+        
+        # PID (acceleration command)
+        a_unsat = (self.p.kp * e) + (self.p.ki * e_int_candidate) + (self.p.kd * de)
+        
+        # Saturation to comfortable accel/decel limits
+        a_des = float(np.clip(a_unsat, -self.p.u, self.p.a_comfort))
+        
+        # Anti-windup: only accept integral if not saturated (or if it would reduce saturation)
+        if (a_des == a_unsat) or ((a_des == self.p.a_comfort) and e < 0) or ((a_des == -self.p.u) and e > 0):
+            self._e_int = e_int_candidate
+            
+        self._e_prev = e
+        
+        # Convert desired acceleration to throttle/brake
         if a_des >= 0:
             throttle = a_des / self.p.a_comfort if self.p.a_comfort > 0 else 0.0
             brake = 0.0
         else:
             throttle = 0.0
             brake = (-a_des) / self.p.u if self.p.u > 0 else 0.0
-
-        # extra safety
-        d_req = required_gap_eq17(v_host_kmh, v_lead_kmh, u=self.p.u, h=h, dt=dt)
-            #if gap_m < d_req:
-            #throttle = 0.0
-            #brake = max(brake, self.p.hard_brake)
-
-        return float(np.clip(throttle, 0, 1)), float(np.clip(brake, 0, 1)), v_thr, v_target, d_req
+            
+        return float(np.clip(throttle, 0, 1)), float(np.clip(brake, 0, 1))

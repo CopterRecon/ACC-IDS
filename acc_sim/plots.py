@@ -36,10 +36,10 @@ def plot_speed_threshold(
     plt.legend()
     plt.show()
     
-def plot_gap_vs_required(df):
+def plot_gap_vs_safedistance(df):
     plt.figure()
     plt.plot(df["step"], df["gap_m"], label="Gap d (m)")
-    plt.plot(df["step"], df["d_req_m"], label="Required gap d_req (m)")
+    plt.plot(df["step"], df["d_safe"], label="Safe distance (m)")
     plt.xlabel("Time step")
     plt.ylabel("Distance (m)")
     plt.grid(True)

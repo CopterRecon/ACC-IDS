@@ -11,7 +11,7 @@ import numpy as np
 from dataclasses import dataclass
 import pandas as pd
 from .vehicle import VehicleModel
-from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold
+from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold, safe_distance_simple
 from .controllers import LeadCruiseController, HostACCController
 from .filters import KalmanFilter
 from .attacks import SpeedFaultInjector, SpeedAttackConfig
@@ -58,7 +58,9 @@ class TwoCarSimulator:
         ntimes = 0
         rtimes = 0
 
-        for k in range(self.cfg.steps):
+        #The simulation iterates self.cfg.steps times
+        
+        for i in range(self.cfg.steps):
             # Lead control + step
             lead_th, lead_br, lead_event = self.lead_ctrl.act(self.lead.s.speed_kmh, dt=self.cfg.dt)
             
@@ -72,29 +74,37 @@ class TwoCarSimulator:
             vL, aL = self.lead.step(lead_th, lead_br, self.cfg.dt)
 
             # Host control + step
-            host_th, host_br, v_thr, v_tgt, d_req_dbg = self.host_ctrl.act(
-                self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt
-            )
+            #Lotfi ben Othmane commented this on 1/1/2026
+            #host_th, host_br, v_thr, v_tgt, d_req_dbg = self.host_ctrl.act(
+            #    self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt
+            #)
+            
+            # Host control + step
+            host_th, host_br = self.host_ctrl.act(
+                self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt)
             
             vH, aH = self.host.step(host_th, host_br, self.cfg.dt)
             
             # Update gap (m)
             self.gap_m = gap_update(self.gap_m, vH, vL, self.cfg.dt)
 
+
             # Safety metrics (use the controller’s u via vehicle params)
             u = self.host.p.u_brake
+            d_safe = safe_distance_simple(vH, self.cfg.h, u)
             d_req = required_gap_eq17(vH, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
             v_thr_now = compute_v_thr(self.gap_m, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
 
-            potential_crash = int(self.gap_m < d_req)
+            potential_crash = int(self.gap_m < d_safe)
             speed_risk = int(vH > v_thr_now)
             ntimes += potential_crash
             rtimes += speed_risk
             
-            #Add the Z
-            # Suppose kf_host tracks host speed in km/h
+            '''
+                     Use Kalman Filter
+            '''
             
-            print (f"kf_host.P: {self.kf_host.P}")
+            #print (f"kf_host.P: {self.kf_host.P}")
             
             # --- KF predict ---
             self.kf_host.predict()
@@ -117,7 +127,7 @@ class TwoCarSimulator:
             
             #Simulate attack
             z_clean = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))  # sensor noise
-            z_attack, attack_active, inj_delta = self.speed_attacker.apply(z_clean, k)
+            z_attack, attack_active, inj_delta = self.speed_attacker.apply(z_clean, i)
             # The injected data is fed to the kalman filter
             v_filtAttack = self.kf_host.update(z_attack)
             
@@ -125,13 +135,14 @@ class TwoCarSimulator:
             
 
             self.records.append({
-                "step": k,
+                "step": i,
                 "v_host_kmh": vH,
                 "v_lead_kmh": vL,
                 "gap_m": self.gap_m,
+                "d_safe":d_safe,
                 "d_req_m": d_req,
                 "v_thr_kmh": v_thr_now,
-                "v_target_kmh": v_tgt,
+#                "v_target_kmh": v_tgt,
                 "z_thr":z_thr,
                 "host_throttle": host_th,
                 "host_brake": host_br,
