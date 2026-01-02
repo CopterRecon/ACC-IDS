@@ -12,7 +12,7 @@ from .constants import KMH_TO_MS
 ''' 
      This method computes the safe distance for the host vehicle
 '''
-def safe_distance_simple(v_host_kmh: float, h: float, u: float) -> float:
+def safe_distance(v_host_kmh: float, h: float, u: float) -> float:
     """
     d = v*h + v^2/(2u) in meters (host-only)
     """

@@ -17,14 +17,14 @@ class SpeedAttackConfig:
     enabled: bool = False
 
     # Attack scheduling
-    start_step: int = 200
+    start_step: int = 1
     end_step: Optional[int] = None  # None => until the end
 
     # Modes: "bias", "scale", "ramp_bias", "pulse", "replay"
-    mode: str = "ramp_bias"
+    mode: str = "bias"
 
     # --- bias / ramp_bias ---
-    bias_kmh: float = 8.0                 # for mode="bias"
+    bias_kmh: float = 20.0                 # for mode="bias"
     ramp_kmh_per_s: float = 0.4           # for mode="ramp_bias" (km/h per second)
     max_ramp_bias_kmh: float = 25.0       # clamp ramp bias
 
@@ -98,7 +98,7 @@ class SpeedFaultInjector:
         z_att = float(z_kmh)
 
         if mode == "bias":
-            z_att = z_kmh + self.cfg.bias_kmh
+            z_att = z_kmh - self.cfg.bias_kmh
 
         elif mode == "scale":
             z_att = z_kmh * self.cfg.scale

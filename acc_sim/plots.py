@@ -10,7 +10,9 @@ import numpy as np
 from .safety import *
 from .constants import KMH_TO_MS
 
-
+'''
+    This plot is 
+'''
 def plot_speed_threshold(
     lead_speeds_kmh=(20, 70, 110),
     d_min=0.0,
@@ -49,6 +51,7 @@ def plot_gap_vs_safedistance(df):
 def plot_host_vs_threshold(df):
     plt.figure()
     plt.plot(df["step"], df["v_host_kmh"], label="Host speed v_h (km/h)")
+    plt.plot(df["step"], df["Effective_vH"], label="Effective_vH (km/h)")
     plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
     plt.xlabel("Time step")
     plt.ylabel("Speed (km/h)")
@@ -60,8 +63,7 @@ def plot_Measuredhost_vs_threshold(df):
     plt.figure()
     plt.plot(df["step"], df["v_host_kmh"], marker ="+", markevery=20, label="Host speed v_h (km/h)")
     plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
-    plt.plot(df["step"], df["z_thr"], label="Measured speed z_thr (km/h)")
-    plt.plot(df["step"], df["v_filtFault_kmh"], label="Host speed with KF v_h+(km/h)")
+    plt.plot(df["step"], df["Effective_vH"], label="Effective_vH (km/h)")
     plt.plot(df["step"], df["v_lead_kmh"], label="Lead speed v_l(km/h)")
     plt.xlabel("Time step")
     plt.ylabel("Speed (km/h)")
@@ -71,6 +73,7 @@ def plot_Measuredhost_vs_threshold(df):
     
 def plot_Attackhost_vs_threshold(df):
     plt.figure()
+    plt.plot(df["step"], df["Effective_vH"], label="Effective_vH (km/h)")
     plt.plot(df["step"], df["v_host_kmh"], marker ="+", markevery=20, label="Host speed v_h (km/h)")
     plt.plot(df["step"], df["v_thr_kmh"], label="Threshold speed v_thr (km/h)")
     plt.plot(df["step"], df["v_filtAttack_kmh"], label="Filtered speed ")
@@ -85,6 +88,7 @@ def plot_Attackhost_vs_threshold(df):
 def plot_speeds(df):
     plt.figure()
     plt.plot(df["step"], df["v_host_kmh"], label="Host (km/h)")
+    plt.plot(df["step"], df["Effective_vH"], label="Effective_vH (km/h)")
     plt.plot(df["step"], df["v_lead_kmh"], label="Lead (km/h)")
     plt.xlabel("Time step")
     plt.ylabel("Speed (km/h)")

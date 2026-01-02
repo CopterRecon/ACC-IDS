@@ -8,7 +8,7 @@
 import numpy as np
 from dataclasses import dataclass
 from .constants import KMH_TO_MS
-from .safety import compute_v_thr, required_gap_eq17, safe_distance_simple
+from .safety import compute_v_thr, required_gap_eq17, safe_distance
 
 @dataclass
 class LeadControllerParams:
@@ -135,7 +135,7 @@ class HostACCController:
         
     def act(self, v_host_kmh: float, v_lead_kmh: float, gap_m: float, h: float, dt: float):
         # Desired spacing
-        d_safe = safe_distance_simple(v_host_kmh, h, self.p.u)
+        d_safe = safe_distance(v_host_kmh, h, self.p.u)
         
         # --- PID on spacing error ---
         e = gap_m - d_safe                          # [m]

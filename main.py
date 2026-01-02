@@ -6,17 +6,18 @@
 
 import random
 import numpy as np
+import datetime
 
 from acc_sim.vehicle import VehicleParams, VehicleState, VehicleModel
 from acc_sim.controllers import LeadCruiseController, LeadControllerParams, HostACCController, HostControllerParams
-from acc_sim.safety import safe_distance_simple
+from acc_sim.safety import safe_distance
 from acc_sim.simulator import TwoCarSimulator, SimConfig
 from acc_sim.plots import plot_gap_vs_safedistance, plot_host_vs_threshold, plot_speeds, plot_speed_threshold, plot_distance_gap_vs_speed_threshold, plot_Measuredhost_vs_threshold,plot_Attackhost_vs_threshold
 from acc_sim.filters import KalmanFilter
-from acc_sim.constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0
+from acc_sim.constants import KMH_TO_MS, MS_TO_KMH
 
 
-def main():
+def main(scenario):
     random.seed(0)
     np.random.seed(0)
 
@@ -34,21 +35,20 @@ def main():
     lead_ctrl = LeadCruiseController(LeadControllerParams(v_set_kmh=90.0, u=lead_params.u_brake))
     host_ctrl = HostACCController(HostControllerParams(cruise_kmh=120.0, u=host_params.u_brake))
 
-    #Create Kalman filter object
-    kf = KalmanFilter(x0=host.s.speed_kmh, P0=P0, Q=Q, R=R)
-    
     # --- Initial gap (based on simple safe distance) ---
-    init_safe = safe_distance_simple(host.s.speed_kmh, h=cfg.h, u=host_params.u_brake)
+    init_safe = safe_distance(host.s.speed_kmh, h=cfg.h, u=host_params.u_brake)
     init_gap = 1.1 * init_safe
     print(f"Initial safe distance: {init_safe:.3f} m, initial gap: {init_gap:.3f} m")
 
-    sim = TwoCarSimulator(host, lead, host_ctrl, lead_ctrl, cfg, init_gap_m=init_gap, kf_host=kf)
-    df = sim.run()
+    sim = TwoCarSimulator(host, lead, host_ctrl, lead_ctrl, cfg, init_gap_m=init_gap)
+    df = sim.run(scenario)
 
     print("Safe distance violations:", df.attrs.get("safe_distance_violations"))
     print("Threshold violations:", df.attrs.get("threshold_violations"))
-    print(df)
-
+    
+    # Write the dataframe log to file for debugging
+    df.to_csv('.\output\SimulationOutput'+ datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S") +'.txt', sep='\t', index=False, header=True)
+    
     # --- Plots ---
     plot_speeds(df)
     plot_gap_vs_safedistance(df)
@@ -64,4 +64,12 @@ def main():
     # df.to_csv("simulation.csv", index=False)
 
 if __name__ == "__main__":
-    main()
+    
+    # Simulating Scenario of no injection of faulty speed
+    #main(1)
+    
+    # Simulating Scenario of random injection of faulty speed
+    #main(2)
+    
+    # Simulating Scenario of attack injection of faulty speed
+    main(3)

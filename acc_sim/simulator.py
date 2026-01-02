@@ -11,11 +11,11 @@ import numpy as np
 from dataclasses import dataclass
 import pandas as pd
 from .vehicle import VehicleModel
-from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold, safe_distance_simple
+from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold, safe_distance
 from .controllers import LeadCruiseController, HostACCController
 from .filters import KalmanFilter
 from .attacks import SpeedFaultInjector, SpeedAttackConfig
-
+from acc_sim.constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0
 
 @dataclass
 class SimConfig:
@@ -32,8 +32,7 @@ class TwoCarSimulator:
         host_ctrl: HostACCController,
         lead_ctrl: LeadCruiseController,
         cfg: SimConfig,
-        init_gap_m: float,
-        kf_host: KalmanFilter
+        init_gap_m: float
     ):
         self.host = host
         self.lead = lead
@@ -41,23 +40,36 @@ class TwoCarSimulator:
         self.lead_ctrl = lead_ctrl
         self.cfg = cfg
         self.gap_m = float(init_gap_m)
-        self.kf_host = kf_host
         self.records = []
 
         self.attack_cfg =SpeedAttackConfig(
             enabled=True,
-            mode="ramp_bias",
+            mode="bias",
             start_step=200,
             ramp_kmh_per_s=0.3,
             max_ramp_bias_kmh=20.0
         )
         self.speed_attacker = SpeedFaultInjector(self.attack_cfg, dt=self.cfg.dt)
         
-
-    def run(self) -> pd.DataFrame:
-        ntimes = 0
-        rtimes = 0
-
+        #Create Kalman filter object
+        #The initial speed for the KF is the start speed
+        self.kf_host = KalmanFilter(x0=host.s.speed_kmh, P0=P0, Q=Q, R=R)
+    '''
+        case 1: standard case
+        case 2: we use bias and randmoness
+        case 3: we use bias for simulated attacks 
+    '''
+    def run(self, scenario) -> pd.DataFrame:
+        ntimes = 0 # The number of times teh gap distance is lower than the safe distance
+        rtimes = 0 # The number of times the speed is higher than the threshold 
+        ctimes = 0 # The number of times the host and lead vehicle is less than 2 m
+        ztimes = 0 # The number of times the speed exeeded the z threshold
+        
+        z_meas = 0  # default value
+        z_attack =0
+        v_filtAttack =0
+        attack_active=0
+        inj_delta = 0
         #The simulation iterates self.cfg.steps times
         
         for i in range(self.cfg.steps):
@@ -85,63 +97,77 @@ class TwoCarSimulator:
             
             vH, aH = self.host.step(host_th, host_br, self.cfg.dt)
             
-            # Update gap (m)
-            self.gap_m = gap_update(self.gap_m, vH, vL, self.cfg.dt)
-
-
-            # Safety metrics (use the controller’s u via vehicle params)
-            u = self.host.p.u_brake
-            d_safe = safe_distance_simple(vH, self.cfg.h, u)
-            d_req = required_gap_eq17(vH, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
-            v_thr_now = compute_v_thr(self.gap_m, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
-
-            potential_crash = int(self.gap_m < d_safe)
-            speed_risk = int(vH > v_thr_now)
-            ntimes += potential_crash
-            rtimes += speed_risk
-            
-            '''
-                     Use Kalman Filter
-            '''
-            
-            #print (f"kf_host.P: {self.kf_host.P}")
             
             # --- KF predict ---
             self.kf_host.predict()
             v_pred_k1 = self.kf_host.x
             P_pred_k1 = self.kf_host.P
+            Effective_vH = vH # The default is the filtered speed is the current speed
+
+
+            if scenario == 2:
+                
+                # --- KF predict ---
+                #self.kf_host.predict()
+                #v_pred_k1 = self.kf_host.x
+                #P_pred_k1 = self.kf_host.P
+                
+                #  This code simululates random faults processed by kalman filter 
+                # --- Measurement (noisy) and KF update ---
+                z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
+                vH = self.kf_host.update(z_meas)
+                
+            if scenario == 3:
+                #Simulate attack
+                # mode: str = "bias" - add 8 km/h to the speed
+
+#                z_clean = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))  # sensor noise
+                z_attack, attack_active, inj_delta = self.speed_attacker.apply(vH, i)
+                # The injected data is fed to the kalman filter
+                vH = self.kf_host.update(z_attack)
             
+            #==========End scenarios
             
-            #  This code simululates random faults processed by kalman filter 
-            # --- Measurement (noisy) and KF update ---
-            z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
-            v_filtFault = self.kf_host.update(z_meas)
+            # Update gap (m)
+            # The gap uses the real unfiltered speed 
+            self.gap_m = gap_update(self.gap_m, Effective_vH, vL, self.cfg.dt)
+
+            # Safety metrics (use the controller’s u via vehicle params)
+            u = self.host.p.u_brake
+            # ACC will use teh safe distance computed with the manipulated speed 
+            # But accident will occur based on real safe distance computed with the manipulated speed
+            d_safe = safe_distance(Effective_vH, self.cfg.h, u)
             
+            d_req = required_gap_eq17(vH, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
+            #The threshold need to account 
+            v_thr = compute_v_thr(self.gap_m, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
             # --- Lemma 4.2: measurement threshold ---
+            
             z_thr, K_k1 = lemma42_z_threshold(
-                v_pred_k1=v_filtFault,
+                v_pred_k1=v_pred_k1,
                 P_pred_k1=P_pred_k1,
                 R=self.kf_host.R,
-                v_thr=v_thr_now,
+                v_thr=v_thr,
             )
-            
-            #Simulate attack
-            z_clean = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))  # sensor noise
-            z_attack, attack_active, inj_delta = self.speed_attacker.apply(z_clean, i)
-            # The injected data is fed to the kalman filter
-            v_filtAttack = self.kf_host.update(z_attack)
-            
-            
-            
+
+            potential_crash = int(self.gap_m < d_safe)
+            crash = int(self.gap_m < 2)
+            speed_risk = int(vH > v_thr)
+            z_risk = int (vH>z_thr)
+            ntimes += potential_crash
+            rtimes += speed_risk
+            ctimes+=crash
+            ztimes+=z_risk
 
             self.records.append({
                 "step": i,
                 "v_host_kmh": vH,
+                "Effective_vH":Effective_vH,
                 "v_lead_kmh": vL,
                 "gap_m": self.gap_m,
                 "d_safe":d_safe,
                 "d_req_m": d_req,
-                "v_thr_kmh": v_thr_now,
+                "v_thr_kmh": v_thr,
 #                "v_target_kmh": v_tgt,
                 "z_thr":z_thr,
                 "host_throttle": host_th,
@@ -154,11 +180,9 @@ class TwoCarSimulator:
                 "a_host_mps2": aH,
                 "a_lead_mps2": aL,
                 "z_meas_kmh": z_meas,
-                "v_filtFault_kmh": v_filtFault,
                 "K_k1": K_k1,
                 "v_pred_kmh": v_pred_k1,
                 "P_pred": P_pred_k1,
-                "z_meas_kmh": z_clean,
                 "z_attack_kmh": z_attack,
                 "v_filtAttack_kmh": v_filtAttack,
                 "attack_active": attack_active,
@@ -171,5 +195,7 @@ class TwoCarSimulator:
 
         df = pd.DataFrame(self.records)
         df.attrs["safe_distance_violations"] = ntimes
-        df.attrs["threshold_violations"] = rtimes
+        df.attrs["Speed threshold_violations"] = rtimes
+        df.attrs["Crashes"] = ctimes
+        df.attrs["Z threshold_violations"] = ztimes
         return df
