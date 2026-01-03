@@ -72,7 +72,7 @@ def main(scenario):
 if __name__ == "__main__":
     
     # Simulating Scenario of no injection of faulty speed
-    #main(1)
+    main(1)
     
     # Simulating Scenario of random injection of faulty speed
     #main(2)
@@ -81,4 +81,4 @@ if __name__ == "__main__":
     #main(3)
     
     # Simulating Scenario of attack injection of faulty speed and IDS
-    main(4)
+    #main(4)

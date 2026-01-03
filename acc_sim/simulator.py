@@ -127,7 +127,7 @@ class TwoCarSimulator:
                 z_attack, attack_active, inj_delta = self.speed_attacker.apply(vH, i)
                 
                 #Activate IDS of there is atatck injection
-                if z_attack != vH:
+                if z_attack != vH and scenario ==4:
                     ActivateIDS = 1
                     z_attack = vH   #Also use the previous speed value
                     
