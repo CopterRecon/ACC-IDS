@@ -32,11 +32,8 @@ def gap_update(prev_gap_m: float, v_host_kmh: float, v_lead_kmh: float, dt: floa
     This method computes the threshold speed for the host vehicle
 '''
 def compute_v_thr(gap_m, v_lead_kmh, u, h, dt) -> float:
-    """
-    Threshold host speed v_thr (km/h) from quadratic:
-      (KMH_TO_MS^2/(2u)) v^2 + (KMH_TO_MS*(h+dt)) v - (gap + KMH_TO_MS*dt*v_lead) = 0
-    """
-    p = (KMH_TO_MS**2) / (2.0 * u)
+    
+    p = 0.039 / u
     b = KMH_TO_MS * (h + dt)
     c = -(gap_m + KMH_TO_MS * dt * v_lead_kmh)
 

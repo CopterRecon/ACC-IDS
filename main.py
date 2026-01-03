@@ -44,22 +44,28 @@ def main(scenario):
     df = sim.run(scenario)
 
     print("Safe distance violations:", df.attrs.get("safe_distance_violations"))
-    print("Threshold violations:", df.attrs.get("threshold_violations"))
+    print("Threshold violations:", df.attrs.get("Speed threshold_violations"))
+    print("Crashes:", df.attrs.get("Crashes"))
+    print("Z threshold_violations:", df.attrs.get("Z threshold_violations"))
     
     # Write the dataframe log to file for debugging
-    df.to_csv('.\output\SimulationOutput'+ datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S") +'.txt', sep='\t', index=False, header=True)
+    df.to_csv('.//output//SimulationOutput'+ datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S") +'.csv', sep=',', index=False, header=True)
     
     # --- Plots ---
-    plot_speeds(df)
-    plot_gap_vs_safedistance(df)
-    plot_host_vs_threshold(df)
-    #plot_speed_threshold(lead_speeds_kmh=(20, 70, 110),d_min=0,d_max=80,u=3.4,h=2.0,dt=0.1)
-    #plot_distance_gap_vs_speed_threshold(v_lead_kmh=30.0,gap_m=41.0,u=host_params.u_brake,h=cfg.h,dt=cfg.dt,v_max_kmh=140)
     
-    plot_Measuredhost_vs_threshold(df)
+    if scenario==1:
+        plot_speeds(df)
+        plot_gap_vs_safedistance(df)
     
-    # Plots speed attacks and relation to other data
-    plot_Attackhost_vs_threshold(df)
+    if scenario==2:
+        plot_host_vs_threshold(df)
+        plot_Measuredhost_vs_threshold(df)
+        plot_gap_vs_safedistance(df)
+        
+    if scenario>=3:
+        # Plots speed attacks and relation to other data
+        plot_Attackhost_vs_threshold(df)
+        plot_gap_vs_safedistance(df)
     # Optional: save
     # df.to_csv("simulation.csv", index=False)
 
@@ -72,4 +78,7 @@ if __name__ == "__main__":
     #main(2)
     
     # Simulating Scenario of attack injection of faulty speed
-    main(3)
+    #main(3)
+    
+    # Simulating Scenario of attack injection of faulty speed and IDS
+    main(4)

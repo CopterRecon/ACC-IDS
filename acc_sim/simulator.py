@@ -44,10 +44,10 @@ class TwoCarSimulator:
 
         self.attack_cfg =SpeedAttackConfig(
             enabled=True,
-            mode="bias",
+            mode="ramp_bias",
             start_step=200,
             ramp_kmh_per_s=0.3,
-            max_ramp_bias_kmh=20.0
+            max_ramp_bias_kmh=10.0
         )
         self.speed_attacker = SpeedFaultInjector(self.attack_cfg, dt=self.cfg.dt)
         
@@ -70,6 +70,7 @@ class TwoCarSimulator:
         v_filtAttack =0
         attack_active=0
         inj_delta = 0
+        ActivateIDS = 0
         #The simulation iterates self.cfg.steps times
         
         for i in range(self.cfg.steps):
@@ -95,6 +96,12 @@ class TwoCarSimulator:
             host_th, host_br = self.host_ctrl.act(
                 self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt)
             
+            #Activation of IDS
+            if (scenario == 4) and (ActivateIDS == 1):
+                host_br = 1.0
+                host_th = 0.0
+                ActivateIDS = 0
+                
             vH, aH = self.host.step(host_th, host_br, self.cfg.dt)
             
             
@@ -104,29 +111,34 @@ class TwoCarSimulator:
             P_pred_k1 = self.kf_host.P
             Effective_vH = vH # The default is the filtered speed is the current speed
 
-
+            # Simulating Scenario of random injection of faulty speed
             if scenario == 2:
-                
-                # --- KF predict ---
-                #self.kf_host.predict()
-                #v_pred_k1 = self.kf_host.x
-                #P_pred_k1 = self.kf_host.P
-                
+    
                 #  This code simululates random faults processed by kalman filter 
                 # --- Measurement (noisy) and KF update ---
-                z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
+                #z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
+                z_meas = vH + np.random.normal(0.0, self.kf_host.R)
                 vH = self.kf_host.update(z_meas)
-                
-            if scenario == 3:
+            
+            # Simulating Scenario of attack injection of faulty speed
+            if scenario >= 3:
                 #Simulate attack
                 # mode: str = "bias" - add 8 km/h to the speed
-
-#                z_clean = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))  # sensor noise
                 z_attack, attack_active, inj_delta = self.speed_attacker.apply(vH, i)
-                # The injected data is fed to the kalman filter
+                
+                #Activate IDS of there is atatck injection
+                if z_attack != vH:
+                    ActivateIDS = 1
+                    z_attack = vH   #Also use the previous speed value
+                    
+                    # The injected data is fed to the kalman filter
                 vH = self.kf_host.update(z_attack)
+
             
             #==========End scenarios
+            
+            #Update the speed of the host using the manipulated values
+            self.host.s.speed_kmh = vH
             
             # Update gap (m)
             # The gap uses the real unfiltered speed 
@@ -155,9 +167,9 @@ class TwoCarSimulator:
             speed_risk = int(vH > v_thr)
             z_risk = int (vH>z_thr)
             ntimes += potential_crash
-            rtimes += speed_risk
-            ctimes+=crash
-            ztimes+=z_risk
+            rtimes = rtimes  + speed_risk
+            ctimes += crash
+            ztimes += z_risk
 
             self.records.append({
                 "step": i,
@@ -191,6 +203,7 @@ class TwoCarSimulator:
             })
 
             if self.gap_m < self.cfg.stop_gap_m:
+
                 break
 
         df = pd.DataFrame(self.records)

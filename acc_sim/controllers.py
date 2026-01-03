@@ -134,7 +134,8 @@ class HostACCController:
         self._e_prev = 0.0
         
     def act(self, v_host_kmh: float, v_lead_kmh: float, gap_m: float, h: float, dt: float):
-        # Desired spacing
+        
+        # Desired spacing - it uses the speed used by the car whether with noise and filter or attack and filter
         d_safe = safe_distance(v_host_kmh, h, self.p.u)
         
         # --- PID on spacing error ---
