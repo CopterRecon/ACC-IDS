@@ -1,5 +1,5 @@
 .DS_Store
-/References
-/output
+/References/*
+/output/*
 .DS_Store
-/OldCode
+/OldCode/*
