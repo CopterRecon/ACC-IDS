@@ -49,6 +49,10 @@ class TwoCarSimulator:
             ramp_kmh_per_s=0.3,
             max_ramp_bias_kmh=10.0
         )
+        
+        #TODO set correct param to get values between 0 nd 1000
+        self.attack_cfg.start_step = np.random.normal(0.0, 0.5) 
+        
         self.speed_attacker = SpeedFaultInjector(self.attack_cfg, dt=self.cfg.dt)
         
         #Create Kalman filter object
@@ -81,6 +85,9 @@ class TwoCarSimulator:
             lead_th += np.random.normal(0.0, 0.5)  # throttle noise
             lead_br += np.random.normal(0.0, 0.5)  # brake noise
             
+            #TODO:Fix param values
+            IDSAccuracy = np.random.normal(0.0, 0.5) 
+            
             lead_th = float(np.clip(lead_th, 0, 1))
             lead_br = float(np.clip(lead_br, 0, 1))
             
@@ -97,7 +104,7 @@ class TwoCarSimulator:
                 self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt)
             
             #Activation of IDS
-            if (scenario == 4) and (ActivateIDS == 1):
+            if (scenario == 4) and (ActivateIDS == 1) and (IDSAccuracy ==1):
                 host_br = 1.0
                 host_th = 0.0
                 ActivateIDS = 0
@@ -203,7 +210,7 @@ class TwoCarSimulator:
             })
 
             if self.gap_m < self.cfg.stop_gap_m:
-
+                ctimes = 1
                 break
 
         df = pd.DataFrame(self.records)
@@ -211,4 +218,4 @@ class TwoCarSimulator:
         df.attrs["Speed threshold_violations"] = rtimes
         df.attrs["Crashes"] = ctimes
         df.attrs["Z threshold_violations"] = ztimes
-        return df
+        return df, ctimes

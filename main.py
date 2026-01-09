@@ -41,7 +41,7 @@ def main(scenario):
     print(f"Initial safe distance: {init_safe:.3f} m, initial gap: {init_gap:.3f} m")
 
     sim = TwoCarSimulator(host, lead, host_ctrl, lead_ctrl, cfg, init_gap_m=init_gap)
-    df = sim.run(scenario)
+    df, Ncrashes = sim.run(scenario)
 
     print("Safe distance violations:", df.attrs.get("safe_distance_violations"))
     print("Threshold violations:", df.attrs.get("Speed threshold_violations"))
@@ -66,19 +66,29 @@ def main(scenario):
         # Plots speed attacks and relation to other data
         plot_Attackhost_vs_threshold(df)
         plot_gap_vs_safedistance(df)
+    
+    #Number of crashes
+    return Ncrashes
     # Optional: save
     # df.to_csv("simulation.csv", index=False)
 
 if __name__ == "__main__":
     
-    # Simulating Scenario of no injection of faulty speed
-    main(1)
+    NmCrashes = 0 # number of crashes
     
-    # Simulating Scenario of random injection of faulty speed
-    #main(2)
+    for i in range(100):
+        # Simulating Scenario of no injection of faulty speed
+        #main(1)
     
-    # Simulating Scenario of attack injection of faulty speed
-    #main(3)
+        # Simulating Scenario of random injection of faulty speed
+        #NmCrashes+= main(2)
     
-    # Simulating Scenario of attack injection of faulty speed and IDS
-    #main(4)
+        # Simulating Scenario of attack injection of faulty speed
+        #NmCrashes+= main(3)
+    
+        # Simulating Scenario of attack injection of faulty speed and IDS
+        NmCrashes+= main(4)
+        
+    RatioCrashes = NmCrashes/100  
+    
+    
