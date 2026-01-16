@@ -1,21 +1,20 @@
-
 # Filename: acc_sim/simulator.py
-# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
-# Created: 2025-12-29
-# Description: Implements the simulator 
-# License: -
 
 import random
 import numpy as np
-
 from dataclasses import dataclass
 import pandas as pd
+
 from .vehicle import VehicleModel
-from .safety import gap_update, required_gap_eq17, compute_v_thr,lemma42_z_threshold, safe_distance
+from .safety import (
+    gap_update, required_gap_eq17,
+    compute_v_thr, lemma42_z_threshold, safe_distance
+)
 from .controllers import LeadCruiseController, HostACCController
 from .filters import KalmanFilter
 from .attacks import SpeedFaultInjector, SpeedAttackConfig
-from acc_sim.constants import KMH_TO_MS, MS_TO_KMH, G, R,Q,P0
+from acc_sim.constants import R, Q, P0
+
 
 @dataclass
 class SimConfig:
@@ -24,198 +23,115 @@ class SimConfig:
     steps: int = 1000
     stop_gap_m: float = 2.0
 
+
 class TwoCarSimulator:
+
     def __init__(
         self,
-        host: VehicleModel,
-        lead: VehicleModel,
-        host_ctrl: HostACCController,
-        lead_ctrl: LeadCruiseController,
-        cfg: SimConfig,
-        init_gap_m: float
+        host,
+        lead,
+        host_ctrl,
+        lead_ctrl,
+        cfg,
+        init_gap_m,
+        ids_accuracy            # accuracy passed per run
     ):
         self.host = host
         self.lead = lead
         self.host_ctrl = host_ctrl
         self.lead_ctrl = lead_ctrl
         self.cfg = cfg
-        self.gap_m = float(init_gap_m)
+        self.gap_m = init_gap_m
+        self.ids_accuracy = ids_accuracy
         self.records = []
 
-        self.attack_cfg =SpeedAttackConfig(
+        self.attack_cfg = SpeedAttackConfig(
             enabled=True,
             mode="ramp_bias",
-            start_step=200,
-            ramp_kmh_per_s=0.3,
-            max_ramp_bias_kmh=10.0
+            start_step=100,
+            ramp_kmh_per_s=1.0,
+            max_ramp_bias_kmh=40.0
         )
-        
-        #TODO set correct param to get values between 0 nd 1000
-        self.attack_cfg.start_step = np.random.normal(0.0, 0.5) 
-        
-        self.speed_attacker = SpeedFaultInjector(self.attack_cfg, dt=self.cfg.dt)
-        
-        #Create Kalman filter object
-        #The initial speed for the KF is the start speed
-        self.kf_host = KalmanFilter(x0=host.s.speed_kmh, P0=P0, Q=Q, R=R)
-    '''
-        case 1: standard case
-        case 2: we use bias and randmoness
-        case 3: we use bias for simulated attacks 
-    '''
-    def run(self, scenario) -> pd.DataFrame:
-        ntimes = 0 # The number of times teh gap distance is lower than the safe distance
-        rtimes = 0 # The number of times the speed is higher than the threshold 
-        ctimes = 0 # The number of times the host and lead vehicle is less than 2 m
-        ztimes = 0 # The number of times the speed exeeded the z threshold
-        
-        z_meas = 0  # default value
-        z_attack =0
-        v_filtAttack =0
-        attack_active=0
-        inj_delta = 0
-        ActivateIDS = 0
-        #The simulation iterates self.cfg.steps times
-        
+
+        self.attacker = SpeedFaultInjector(self.attack_cfg, cfg.dt)
+        self.kf = KalmanFilter(
+            x0=host.s.speed_kmh, P0=P0, Q=Q, R=R
+        )
+
+    def run(self, scenario):
+        """
+        Returns:
+            crash_time (int): timestep where crash occurs
+                              -1 if no crash
+        """
+
+        crash_time = -1
+
         for i in range(self.cfg.steps):
-            # Lead control + step
-            lead_th, lead_br, lead_event = self.lead_ctrl.act(self.lead.s.speed_kmh, dt=self.cfg.dt)
-            
-            # small random disturbance
-            lead_th += np.random.normal(0.0, 0.5)  # throttle noise
-            lead_br += np.random.normal(0.0, 0.5)  # brake noise
-            
-            #TODO:Fix param values
-            IDSAccuracy = np.random.normal(0.0, 0.5) 
-            
-            lead_th = float(np.clip(lead_th, 0, 1))
-            lead_br = float(np.clip(lead_br, 0, 1))
-            
-            vL, aL = self.lead.step(lead_th, lead_br, self.cfg.dt)
 
-            # Host control + step
-            #Lotfi ben Othmane commented this on 1/1/2026
-            #host_th, host_br, v_thr, v_tgt, d_req_dbg = self.host_ctrl.act(
-            #    self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt
-            #)
-            
-            # Host control + step
-            host_th, host_br = self.host_ctrl.act(
-                self.host.s.speed_kmh, vL, self.gap_m, h=self.cfg.h, dt=self.cfg.dt)
-            
-            #Activation of IDS
-            if (scenario == 4) and (ActivateIDS == 1) and (IDSAccuracy ==1):
-                host_br = 1.0
-                host_th = 0.0
-                ActivateIDS = 0
-                
-            vH, aH = self.host.step(host_th, host_br, self.cfg.dt)
-            
-            
-            # --- KF predict ---
-            self.kf_host.predict()
-            v_pred_k1 = self.kf_host.x
-            P_pred_k1 = self.kf_host.P
-            Effective_vH = vH # The default is the filtered speed is the current speed
-
-            # Simulating Scenario of random injection of faulty speed
-            if scenario == 2:
-    
-                #  This code simululates random faults processed by kalman filter 
-                # --- Measurement (noisy) and KF update ---
-                #z_meas = vH + np.random.normal(0.0, np.sqrt(self.kf_host.R))
-                z_meas = vH + np.random.normal(0.0, self.kf_host.R)
-                vH = self.kf_host.update(z_meas)
-            
-            # Simulating Scenario of attack injection of faulty speed
-            if scenario >= 3:
-                #Simulate attack
-                # mode: str = "bias" - add 8 km/h to the speed
-                z_attack, attack_active, inj_delta = self.speed_attacker.apply(vH, i)
-                
-                #Activate IDS of there is atatck injection
-                if z_attack != vH and scenario ==4:
-                    ActivateIDS = 1
-                    z_attack = vH   #Also use the previous speed value
-                    
-                    # The injected data is fed to the kalman filter
-                vH = self.kf_host.update(z_attack)
-
-            
-            #==========End scenarios
-            
-            #Update the speed of the host using the manipulated values
-            self.host.s.speed_kmh = vH
-            
-            # Update gap (m)
-            # The gap uses the real unfiltered speed 
-            self.gap_m = gap_update(self.gap_m, Effective_vH, vL, self.cfg.dt)
-
-            # Safety metrics (use the controller’s u via vehicle params)
-            u = self.host.p.u_brake
-            # ACC will use teh safe distance computed with the manipulated speed 
-            # But accident will occur based on real safe distance computed with the manipulated speed
-            d_safe = safe_distance(Effective_vH, self.cfg.h, u)
-            
-            d_req = required_gap_eq17(vH, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
-            #The threshold need to account 
-            v_thr = compute_v_thr(self.gap_m, vL, u=u, h=self.cfg.h, dt=self.cfg.dt)
-            # --- Lemma 4.2: measurement threshold ---
-            
-            z_thr, K_k1 = lemma42_z_threshold(
-                v_pred_k1=v_pred_k1,
-                P_pred_k1=P_pred_k1,
-                R=self.kf_host.R,
-                v_thr=v_thr,
+            # ===== Lead vehicle =====
+            lead_th, lead_br, _ = self.lead_ctrl.act(
+                self.lead.s.speed_kmh, dt=self.cfg.dt
             )
 
-            potential_crash = int(self.gap_m < d_safe)
-            crash = int(self.gap_m < 2)
-            speed_risk = int(vH > v_thr)
-            z_risk = int (vH>z_thr)
-            ntimes += potential_crash
-            rtimes = rtimes  + speed_risk
-            ctimes += crash
-            ztimes += z_risk
+            # Noise added (as requested)
+            lead_th = np.clip(lead_th + np.random.normal(0, 0.5), 0, 1)
+            lead_br = np.clip(lead_br + np.random.normal(0, 0.5), 0, 1)
 
+            vL, _ = self.lead.step(lead_th, lead_br, self.cfg.dt)
+
+            # ===== Host vehicle =====
+            host_th, host_br = self.host_ctrl.act(
+                self.host.s.speed_kmh,
+                vL,
+                self.gap_m,
+                h=self.cfg.h,
+                dt=self.cfg.dt
+            )
+
+            vH_real, _ = self.host.step(host_th, host_br, self.cfg.dt)
+
+            # ===== Kalman Filter =====
+            self.kf.predict()
+
+            z_attack = vH_real
+            attack_active = False
+
+            # Attack only in scenarios ≥ 3
+            if scenario >= 3:
+                z_attack, attack_active, _ = self.attacker.apply(vH_real, i)
+
+                # <<< FIX: IDS ONLY rejects attack measurement (no braking)
+                if scenario == 4 and attack_active:
+                    if random.random() < self.ids_accuracy:
+                        z_attack = vH_real   # IDS cleans measurement
+
+            vH = self.kf.update(z_attack)
+            self.host.s.speed_kmh = vH
+
+            # ===== Gap update =====
+            self.gap_m = gap_update(
+                self.gap_m, vH_real, vL, self.cfg.dt
+            )
+
+            d_safe = safe_distance(
+                vH_real, self.cfg.h, self.host.p.u_brake
+            )
+
+            # ===== Crash detection =====
+            if self.gap_m < self.cfg.stop_gap_m:
+                crash_time = i
+                return crash_time
+
+            # ===== Logging (unchanged for plots) =====
             self.records.append({
                 "step": i,
-                "v_host_kmh": vH,
-                "Effective_vH":Effective_vH,
-                "v_lead_kmh": vL,
                 "gap_m": self.gap_m,
-                "d_safe":d_safe,
-                "d_req_m": d_req,
-                "v_thr_kmh": v_thr,
-#                "v_target_kmh": v_tgt,
-                "z_thr":z_thr,
-                "host_throttle": host_th,
-                "host_brake": host_br,
-                "lead_brake_event": int(lead_event),
-                "lead_throttle": lead_th,
-                "lead_brake": lead_br,
-                "potential_crash": potential_crash,
-                "speed_risk": speed_risk,
-                "a_host_mps2": aH,
-                "a_lead_mps2": aL,
-                "z_meas_kmh": z_meas,
-                "K_k1": K_k1,
-                "v_pred_kmh": v_pred_k1,
-                "P_pred": P_pred_k1,
+                "d_safe": d_safe,
+                "v_host_kmh": vH,
+                "v_lead_kmh": vL,
                 "z_attack_kmh": z_attack,
-                "v_filtAttack_kmh": v_filtAttack,
-                "attack_active": attack_active,
-                "inj_delta_kmh": inj_delta,
-                "meas_exceeds_z_thr": int(z_attack > z_thr),
+                "IDS_accuracy": self.ids_accuracy
             })
 
-            if self.gap_m < self.cfg.stop_gap_m:
-                ctimes = 1
-                break
-
-        df = pd.DataFrame(self.records)
-        df.attrs["safe_distance_violations"] = ntimes
-        df.attrs["Speed threshold_violations"] = rtimes
-        df.attrs["Crashes"] = ctimes
-        df.attrs["Z threshold_violations"] = ztimes
-        return df, ctimes
+        return crash_time

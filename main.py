@@ -1,94 +1,87 @@
-# Filename: acc_sim/main.py
-# Author: Lotfi ben Othmane <lotfi.benothmane@unt.edu> 
-# Created: 2025-12-29
-# Description: Implements the functions for plotting the vehicles speed metrics and distances 
-# License: -
-
-import random
 import numpy as np
-import datetime
+import matplotlib.pyplot as plt
 
-from acc_sim.vehicle import VehicleParams, VehicleState, VehicleModel
-from acc_sim.controllers import LeadCruiseController, LeadControllerParams, HostACCController, HostControllerParams
-from acc_sim.safety import safe_distance
 from acc_sim.simulator import TwoCarSimulator, SimConfig
-from acc_sim.plots import plot_gap_vs_safedistance, plot_host_vs_threshold, plot_speeds, plot_speed_threshold, plot_distance_gap_vs_speed_threshold, plot_Measuredhost_vs_threshold,plot_Attackhost_vs_threshold
-from acc_sim.filters import KalmanFilter
-from acc_sim.constants import KMH_TO_MS, MS_TO_KMH
+from acc_sim.vehicle import VehicleModel, VehicleParams, VehicleState
+from acc_sim.controllers import (
+    LeadCruiseController,
+    HostACCController,
+    LeadControllerParams,
+    HostControllerParams
+)
 
 
-def main(scenario):
-    random.seed(0)
-    np.random.seed(0)
+def accuracy_vs_time_to_crash():
+    """
+    Research-grade experiment:
+    IDS accuracy vs time-to-crash.
 
-    # --- Config ---
-    cfg = SimConfig(h=2.0, dt=0.1, steps=1000, stop_gap_m=2.0)
+    IMPORTANT:
+    - crash_time == -1 means NO crash
+    - mapped to full simulation horizon (cfg.steps)
+    """
 
-    # --- Vehicles ---
-    host_params = VehicleParams(mass=1200.0, u_brake=3.4, a_max=1.5)
-    lead_params = VehicleParams(mass=1200.0, u_brake=3.4, a_max=1.5)
+    cfg = SimConfig()
+    scenario = 4  # IDS-enabled attack scenario
 
-    host = VehicleModel("Host", host_params, VehicleState(speed_kmh=25.0))
-    lead = VehicleModel("Lead", lead_params, VehicleState(speed_kmh=30.0))
+    acc_vals = np.arange(0.1, 1.01, 0.1)
+    crash_times = []
 
-    # --- Controllers ---
-    lead_ctrl = LeadCruiseController(LeadControllerParams(v_set_kmh=90.0, u=lead_params.u_brake))
-    host_ctrl = HostACCController(HostControllerParams(cruise_kmh=120.0, u=host_params.u_brake))
+    for acc in acc_vals:
 
-    # --- Initial gap (based on simple safe distance) ---
-    init_safe = safe_distance(host.s.speed_kmh, h=cfg.h, u=host_params.u_brake)
-    init_gap = 1.1 * init_safe
-    print(f"Initial safe distance: {init_safe:.3f} m, initial gap: {init_gap:.3f} m")
+        # ===== Vehicle parameters & states =====
+        host_vehicle_params = VehicleParams()
+        lead_vehicle_params = VehicleParams()
 
-    sim = TwoCarSimulator(host, lead, host_ctrl, lead_ctrl, cfg, init_gap_m=init_gap)
-    df, Ncrashes = sim.run(scenario)
+        host_state = VehicleState(speed_kmh=80.0)
+        lead_state = VehicleState(speed_kmh=80.0)
 
-    print("Safe distance violations:", df.attrs.get("safe_distance_violations"))
-    print("Threshold violations:", df.attrs.get("Speed threshold_violations"))
-    print("Crashes:", df.attrs.get("Crashes"))
-    print("Z threshold_violations:", df.attrs.get("Z threshold_violations"))
-    
-    # Write the dataframe log to file for debugging
-    df.to_csv('.//output//SimulationOutput'+ datetime.datetime.now().strftime("%Y-%m-%d %H-%M-%S") +'.csv', sep=',', index=False, header=True)
-    
-    # --- Plots ---
-    
-    if scenario==1:
-        plot_speeds(df)
-        plot_gap_vs_safedistance(df)
-    
-    if scenario==2:
-        plot_host_vs_threshold(df)
-        plot_Measuredhost_vs_threshold(df)
-        plot_gap_vs_safedistance(df)
-        
-    if scenario>=3:
-        # Plots speed attacks and relation to other data
-        plot_Attackhost_vs_threshold(df)
-        plot_gap_vs_safedistance(df)
-    
-    #Number of crashes
-    return Ncrashes
-    # Optional: save
-    # df.to_csv("simulation.csv", index=False)
+        host = VehicleModel("host", host_vehicle_params, host_state)
+        lead = VehicleModel("lead", lead_vehicle_params, lead_state)
+
+        # ===== Controller parameters (THIS IS THE KEY FIX) =====
+        lead_ctrl_params = LeadControllerParams(
+            v_set_kmh=80.0
+        )
+
+        host_ctrl_params = HostControllerParams(
+            cruise_kmh=100.0
+        )
+
+        host_ctrl = HostACCController(host_ctrl_params)
+        lead_ctrl = LeadCruiseController(lead_ctrl_params)
+
+        init_gap_m = 30.0
+
+        sim = TwoCarSimulator(
+            host=host,
+            lead=lead,
+            host_ctrl=host_ctrl,
+            lead_ctrl=lead_ctrl,
+            cfg=cfg,
+            init_gap_m=init_gap_m,
+            ids_accuracy=acc
+        )
+
+        crash_time = sim.run(scenario)
+
+        # ===== RESEARCH-CORRECT HANDLING OF NO-CRASH =====
+        if crash_time == -1:
+            crash_time = cfg.steps
+
+        crash_times.append(crash_time)
+
+        print(f"Accuracy={acc:.2f}, Time-to-crash={crash_time}")
+
+    # ===== Plot =====
+    plt.figure(figsize=(8, 5))
+    plt.plot(acc_vals, crash_times, marker='o')
+    plt.xlabel("IDS Accuracy")
+    plt.ylabel("Time to Crash (steps)")
+    plt.title("IDS Accuracy vs Time-to-Crash")
+    plt.grid(True)
+    plt.show()
+
 
 if __name__ == "__main__":
-    
-    NmCrashes = 0 # number of crashes
-    
-    for i in range(100):
-        # Simulating Scenario of no injection of faulty speed
-        #main(1)
-    
-        # Simulating Scenario of random injection of faulty speed
-        #NmCrashes+= main(2)
-    
-        # Simulating Scenario of attack injection of faulty speed
-        #NmCrashes+= main(3)
-    
-        # Simulating Scenario of attack injection of faulty speed and IDS
-        NmCrashes+= main(4)
-        
-    RatioCrashes = NmCrashes/100  
-    
-    
+    accuracy_vs_time_to_crash()
