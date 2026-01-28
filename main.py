@@ -24,7 +24,7 @@ def accuracy_vs_time_to_crash():
     cfg = SimConfig()
     scenario = 4  # IDS-enabled attack scenario
 
-    acc_vals = np.arange(0.1, 1.01, 0.1)
+    acc_vals = np.arange(0.0, 1.01, 0.1)
     crash_times = []
 
     for acc in acc_vals:
@@ -63,16 +63,18 @@ def accuracy_vs_time_to_crash():
             ids_accuracy=acc
         )
 
-        crash_time = sim.run(scenario)
+        df, ctimes, crash_time = sim.run(scenario)
 
-        # ===== RESEARCH-CORRECT HANDLING OF NO-CRASH =====
-        if crash_time == -1:
-            crash_time = cfg.steps
+        # ===== HANDLING OF NO-CRASH =====
+        #if crash_time == -1:
+        #    crash_time = cfg.steps
 
         crash_times.append(crash_time)
 
         print(f"Accuracy={acc:.2f}, Time-to-crash={crash_time}")
 
+
+    print (crash_times)
     # ===== Plot =====
     plt.figure(figsize=(8, 5))
     plt.plot(acc_vals, crash_times, marker='o')
@@ -84,4 +86,6 @@ def accuracy_vs_time_to_crash():
 
 
 if __name__ == "__main__":
+    
     accuracy_vs_time_to_crash()
+        
